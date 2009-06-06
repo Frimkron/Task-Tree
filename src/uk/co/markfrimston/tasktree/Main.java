@@ -1,3 +1,28 @@
+/*
+Copyright (c) 2009 Mark Frimston
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+*/
+
 package uk.co.markfrimston.tasktree;
 
 import javax.swing.*;
@@ -19,41 +44,11 @@ import java.util.*;
 
 public class Main extends JFrame
 {
-	protected class TaskNode extends DefaultMutableTreeNode
-	{	
-		public TaskNode() {
-			super();
-		}
-		public TaskNode(Object userObject, boolean allowsChildren) {
-			super(userObject, allowsChildren);
-		}
-		public TaskNode(Object userObject) {
-			super(userObject);
-		}
-		/*public Object getUserObject() 
-		{
-			if(this.getChildCount()>0 && !tree.isExpanded(new TreePath(
-					((TaskNode)this.getFirstChild()).getPath())))
-			{
-				return String.valueOf(super.getUserObject())
-					+" ["+String.valueOf(((TaskNode)this.getFirstChild()).getRealUserObject())+"]";
-			}
-			else
-			{
-				return getRealUserObject();
-			}
-		}*/
-		public Object getRealUserObject()
-		{
-			return super.getUserObject();
-		}
-	}
-	
 	protected static final String FILENAME = "tasks.xml";
 	protected static DocumentBuilderFactory builderFact = DocumentBuilderFactory.newInstance();
 	protected static TransformerFactory transFact = TransformerFactory.newInstance();
 	
-	protected TaskNode root;
+	protected DefaultMutableTreeNode root;
 	protected DefaultTreeModel treeModel;
 	protected JTree tree;
 	protected JTextArea quickIn;
@@ -86,7 +81,7 @@ public class Main extends JFrame
 		this.quickIn.setBorder(BorderFactory.createTitledBorder("Quick Input"));
 		this.getContentPane().add(quickIn, BorderLayout.NORTH);
 		
-		root = new TaskNode("root");
+		root = new DefaultMutableTreeNode("root");
 		treeModel = new DefaultTreeModel(root);
 		this.tree = new JTree(treeModel);
 		DefaultTreeCellRenderer renderer = new DefaultTreeCellRenderer(){
@@ -94,11 +89,11 @@ public class Main extends JFrame
 					Object value, boolean selected, boolean expanded, boolean leaf,
 					int row, boolean hasFocus) 
 			{
-				TaskNode node = (TaskNode)value;
+				DefaultMutableTreeNode node = (DefaultMutableTreeNode)value;
 				Object newVal = String.valueOf(node.getUserObject());
 				if(node.getChildCount()>0 && !tree.isExpanded(new TreePath(node.getPath())))
 				{
-					TaskNode firstChild = (TaskNode)node.getFirstChild();
+					DefaultMutableTreeNode firstChild = (DefaultMutableTreeNode)node.getFirstChild();
 					newVal = String.valueOf(node.getUserObject())
 						+" <span style='color:silver;font-style:italic'>"
 							+"("+String.valueOf(firstChild.getUserObject())+")</span>";
@@ -139,8 +134,8 @@ public class Main extends JFrame
 		addBefore.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();			
-				TaskNode parent = (TaskNode)selected.getParent();
+				DefaultMutableTreeNode selected = getSelectedNode();			
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = parent.getIndex(selected);				
 				promptAndInsert(parent, pos);
 				save();
@@ -151,8 +146,8 @@ public class Main extends JFrame
 		addAfter.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				TaskNode parent = (TaskNode)selected.getParent();
+				DefaultMutableTreeNode selected = getSelectedNode();
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = parent.getIndex(selected)+1;
 				promptAndInsert(parent, pos);
 				save();
@@ -163,7 +158,7 @@ public class Main extends JFrame
 		addNested.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
+				DefaultMutableTreeNode selected = getSelectedNode();
 				int pos = selected.getChildCount();
 				promptAndInsert(selected, pos);
 				save();
@@ -175,8 +170,8 @@ public class Main extends JFrame
 		moveTop.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				TaskNode parent = (TaskNode)selected.getParent();
+				DefaultMutableTreeNode selected = getSelectedNode();
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				moveTask(selected, parent, 0);
 				save();
 			}
@@ -186,8 +181,8 @@ public class Main extends JFrame
 		moveUp.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				TaskNode parent = (TaskNode)selected.getParent();
+				DefaultMutableTreeNode selected = getSelectedNode();
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = Math.max(parent.getIndex(selected)-1,0);
 				moveTask(selected, parent, pos);
 				save();
@@ -198,8 +193,8 @@ public class Main extends JFrame
 		moveDown.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				TaskNode parent = (TaskNode)selected.getParent();
+				DefaultMutableTreeNode selected = getSelectedNode();
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = Math.min(parent.getIndex(selected)+1, parent.getChildCount()-1);
 				moveTask(selected, parent, pos);
 				save();
@@ -210,8 +205,8 @@ public class Main extends JFrame
 		moveBottom.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				TaskNode parent = (TaskNode)selected.getParent();				
+				DefaultMutableTreeNode selected = getSelectedNode();
+				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();				
 				moveTask(selected, parent, parent.getChildCount()-1);
 				save();
 			}
@@ -222,8 +217,8 @@ public class Main extends JFrame
 		rename.addActionListener(new ActionListener(){
 			public void actionPerformed(ActionEvent e)
 			{
-				TaskNode selected = getSelectedNode();
-				String newText = prompt((String)selected.getRealUserObject());
+				DefaultMutableTreeNode selected = getSelectedNode();
+				String newText = prompt((String)selected.getUserObject());
 				if(newText!=null && newText.length()>0)
 				{			
 					selected.setUserObject(newText);
@@ -248,7 +243,7 @@ public class Main extends JFrame
 		load();
 	}
 	
-	protected TaskNode getSelectedNode()
+	protected DefaultMutableTreeNode getSelectedNode()
 	{
 		int[] selected = tree.getSelectionRows();
 		if(selected==null || selected.length==0){
@@ -258,7 +253,7 @@ public class Main extends JFrame
 		if(path==null || path.getPathCount()==0){
 			return null;
 		}
-		return (TaskNode)path.getLastPathComponent();
+		return (DefaultMutableTreeNode)path.getLastPathComponent();
 	}
 	
 	protected String prompt(String existing)
@@ -266,7 +261,7 @@ public class Main extends JFrame
 		return JOptionPane.showInputDialog(this,"Enter label",existing);
 	}
 	
-	protected void promptAndInsert(TaskNode parent, int childPos)
+	protected void promptAndInsert(DefaultMutableTreeNode parent, int childPos)
 	{
 		String nodeText = prompt("");
 		if(nodeText!=null && nodeText.length()>0)
@@ -275,16 +270,16 @@ public class Main extends JFrame
 		}		
 	}
 	
-	protected void moveTask(TaskNode node, TaskNode parent, int childPos)
+	protected void moveTask(DefaultMutableTreeNode node, DefaultMutableTreeNode parent, int childPos)
 	{
 		treeModel.removeNodeFromParent(node);
 		treeModel.insertNodeInto(node, parent, childPos);
 	}
 	
-	protected TaskNode addTask(TaskNode parent, int childPos, 
+	protected DefaultMutableTreeNode addTask(DefaultMutableTreeNode parent, int childPos, 
 			String name, boolean show)
 	{
-		TaskNode newNode = new TaskNode(name);
+		DefaultMutableTreeNode newNode = new DefaultMutableTreeNode(name);
 		treeModel.insertNodeInto(newNode, parent, childPos);
 		if(show){
 			tree.makeVisible(new TreePath(newNode.getPath()));
@@ -292,7 +287,7 @@ public class Main extends JFrame
 		return newNode;
 	}
 	
-	protected void promptAndRemove(TaskNode node)
+	protected void promptAndRemove(DefaultMutableTreeNode node)
 	{
 		boolean canRemove = true;
 		if(node.getChildCount()>0)
@@ -308,7 +303,7 @@ public class Main extends JFrame
 		}
 	}
 	
-	protected void removeTask(TaskNode node)
+	protected void removeTask(DefaultMutableTreeNode node)
 	{
 		treeModel.removeNodeFromParent(node);
 	}
@@ -338,13 +333,13 @@ public class Main extends JFrame
 	}
 	
 	protected void addChildElementsFromTasks(Document doc, Element parent, 
-			TaskNode treeNode)
+			DefaultMutableTreeNode treeNode)
 	{
 		for(int i=0; i<treeNode.getChildCount(); i++)
 		{
-			TaskNode treeChild = (TaskNode)treeNode.getChildAt(i);
+			DefaultMutableTreeNode treeChild = (DefaultMutableTreeNode)treeNode.getChildAt(i);
 			Element childEl = doc.createElement("task");
-			childEl.setAttribute("label", (String)treeChild.getRealUserObject());
+			childEl.setAttribute("label", (String)treeChild.getUserObject());
 			parent.appendChild(childEl);
 			addChildElementsFromTasks(doc, childEl, treeChild);
 		}
@@ -384,7 +379,7 @@ public class Main extends JFrame
 		}
 	}
 	
-	protected void addTasksFromChildElements(Element parent, TaskNode treeNode,
+	protected void addTasksFromChildElements(Element parent, DefaultMutableTreeNode treeNode,
 			boolean show)
 		throws Exception
 	{
@@ -399,7 +394,7 @@ public class Main extends JFrame
 			if(name==null || name.length()==0){
 				throw new Exception("No label attribute for task");
 			}
-			TaskNode newNode = addTask(treeNode, treeNode.getChildCount(), name, show);
+			DefaultMutableTreeNode newNode = addTask(treeNode, treeNode.getChildCount(), name, show);
 			addTasksFromChildElements(child, newNode, false);
 		}
 	}
