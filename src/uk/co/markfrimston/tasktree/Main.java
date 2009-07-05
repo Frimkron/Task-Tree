@@ -90,7 +90,7 @@ public class Main extends JFrame
 					int row, boolean hasFocus) 
 			{
 				DefaultMutableTreeNode node = (DefaultMutableTreeNode)value;
-				Object newVal = String.valueOf(node.getUserObject());
+				Object newVal = htmlFilter(String.valueOf(node.getUserObject()));
 				if(node.getChildCount()>0 && !tree.isExpanded(new TreePath(node.getPath())))
 				{
 					DefaultMutableTreeNode firstChild = (DefaultMutableTreeNode)node.getFirstChild();
