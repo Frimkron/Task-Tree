@@ -93,10 +93,10 @@ public class Main extends JFrame
 				Object newVal = htmlFilter(String.valueOf(node.getUserObject()));
 				if(node.getChildCount()>0 && !tree.isExpanded(new TreePath(node.getPath())))
 				{
-					DefaultMutableTreeNode firstChild = (DefaultMutableTreeNode)node.getFirstChild();
+					DefaultMutableTreeNode firstLeaf = (DefaultMutableTreeNode)node.getFirstLeaf();
 					newVal = htmlFilter(String.valueOf(node.getUserObject()))
 						+" <span style='color:silver;font-style:italic'>"
-							+"("+String.valueOf(firstChild.getUserObject())+")</span>";
+							+"("+String.valueOf(firstLeaf.getUserObject())+")</span>";
 				}
 				newVal = "<html>"+newVal+"</html>";
 				
@@ -249,8 +249,7 @@ public class Main extends JFrame
 			.replaceAll("&","&amp;")
 			.replaceAll("<","&lt;")
 			.replaceAll(">", "&gt;")
-			.replaceAll("\"", "&quot;")
-			.replaceAll("'","&apos;");
+			.replaceAll("\"", "&quot;");
 	}
 	
 	protected DefaultMutableTreeNode getSelectedNode()
