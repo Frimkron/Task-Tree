@@ -94,7 +94,7 @@ public class Main extends JFrame
 				if(node.getChildCount()>0 && !tree.isExpanded(new TreePath(node.getPath())))
 				{
 					DefaultMutableTreeNode firstChild = (DefaultMutableTreeNode)node.getFirstChild();
-					newVal = String.valueOf(node.getUserObject())
+					newVal = htmlFilter(String.valueOf(node.getUserObject()))
 						+" <span style='color:silver;font-style:italic'>"
 							+"("+String.valueOf(firstChild.getUserObject())+")</span>";
 				}
@@ -243,6 +243,16 @@ public class Main extends JFrame
 		load();
 	}
 	
+	protected String htmlFilter(String input)
+	{
+		return input
+			.replaceAll("&","&amp;")
+			.replaceAll("<","&lt;")
+			.replaceAll(">", "&gt;")
+			.replaceAll("\"", "&quot;")
+			.replaceAll("'","&apos;");
+	}
+	
 	protected DefaultMutableTreeNode getSelectedNode()
 	{
 		int[] selected = tree.getSelectionRows();
@@ -322,7 +332,8 @@ public class Main extends JFrame
 			transFact.setAttribute("indent-number", 4);
 			Transformer trans = transFact.newTransformer();
 			trans.setOutputProperty(OutputKeys.INDENT, "yes");
-			FileWriter fileWriter = new FileWriter(new File(FILENAME));
+			FileOutputStream fileStream = new FileOutputStream(new File(FILENAME));
+			OutputStreamWriter fileWriter = new OutputStreamWriter(fileStream,"UTF-8");
 			trans.transform(new DOMSource(doc), new StreamResult(fileWriter));
 			fileWriter.close();
 		}
