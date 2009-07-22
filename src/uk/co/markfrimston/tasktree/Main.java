@@ -41,10 +41,15 @@ import org.w3c.dom.*;
 import org.xml.sax.*;
 import javax.xml.parsers.*;
 import java.util.*;
+import org.apache.commons.httpclient.*;
+import org.apache.commons.httpclient.methods.*;
+import uk.co.markfrimston.utils.*;
 
 public class Main extends JFrame
 {
 	protected static final String FILENAME = "tasks.xml";
+	protected static final String MERGE_FILENAME = "merge-temp.xml";
+	protected static final String CONFIG_FILENAME = "config.xml";
 	protected static DocumentBuilderFactory builderFact = DocumentBuilderFactory.newInstance();
 	protected static TransformerFactory transFact = TransformerFactory.newInstance();
 	
@@ -53,6 +58,13 @@ public class Main extends JFrame
 	protected JTree tree;
 	protected JTextArea quickIn;
 	protected JPopupMenu popup;
+	protected JButton syncButton;
+	
+	protected boolean unsynchedChanges = true;
+	protected String saveUrl;
+	protected String loadUrl;
+	protected Long lastSyncTime = 0L;
+	protected String mergeCommand;
 	
 	public Main()
 	{
@@ -61,6 +73,7 @@ public class Main extends JFrame
 		this.setSize(new Dimension(300,500));
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		
+		JPanel quickInPanel = new JPanel(new BorderLayout());
 		this.quickIn = new JTextArea();
 		this.quickIn.addKeyListener(new KeyAdapter(){
 			public void keyReleased(KeyEvent arg0) 
@@ -79,7 +92,16 @@ public class Main extends JFrame
 		});
 		this.quickIn.setPreferredSize(new Dimension(300,75));
 		this.quickIn.setBorder(BorderFactory.createTitledBorder("Quick Input"));
-		this.getContentPane().add(quickIn, BorderLayout.NORTH);
+		quickInPanel.add(this.quickIn, BorderLayout.CENTER);
+		this.syncButton = new JButton("Sync");
+		this.syncButton.addActionListener(new ActionListener(){
+			public void actionPerformed(ActionEvent e)
+			{
+				new SyncThread(Main.this).start();
+			}
+		});
+		quickInPanel.add(this.syncButton, BorderLayout.EAST);
+		this.getContentPane().add(quickInPanel, BorderLayout.NORTH);
 		
 		root = new DefaultMutableTreeNode("root");
 		treeModel = new DefaultTreeModel(root);
@@ -240,7 +262,11 @@ public class Main extends JFrame
 		
 		this.setVisible(true);	
 		
+		loadConfig();
 		load();
+		
+		syncButton.setVisible(loadUrl!=null && saveUrl!=null 
+				&& mergeCommand!=null);
 	}
 	
 	protected String htmlFilter(String input)
@@ -317,24 +343,35 @@ public class Main extends JFrame
 		treeModel.removeNodeFromParent(node);
 	}
 	
+	protected void writeDocToStream(Document doc, OutputStream stream) throws Exception
+	{
+		transFact.setAttribute("indent-number", 4);
+		Transformer trans = transFact.newTransformer();
+		trans.setOutputProperty(OutputKeys.INDENT, "yes");		
+		OutputStreamWriter writer = new OutputStreamWriter(stream,"UTF-8");
+		trans.transform(new DOMSource(doc), new StreamResult(writer));
+	}
+	
+	protected Document saveToDocument() throws Exception
+	{
+		DocumentBuilder builder = builderFact.newDocumentBuilder();
+		Document doc = builder.newDocument();
+		Element taskList = doc.createElement("tasklist");
+		doc.appendChild(taskList);			
+		Element tasks = doc.createElement("tasks");
+		taskList.appendChild(tasks);
+		addChildElementsFromTasks(doc,tasks,root);
+		return doc;
+	}
+	
 	protected void save()
 	{
 		try
 		{
-			DocumentBuilder builder = builderFact.newDocumentBuilder();
-			Document doc = builder.newDocument();
-			Element taskList = doc.createElement("tasklist");
-			doc.appendChild(taskList);			
-			Element tasks = doc.createElement("tasks");
-			taskList.appendChild(tasks);
-			addChildElementsFromTasks(doc,tasks,root);
-			transFact.setAttribute("indent-number", 4);
-			Transformer trans = transFact.newTransformer();
-			trans.setOutputProperty(OutputKeys.INDENT, "yes");
+			Document doc = saveToDocument();
 			FileOutputStream fileStream = new FileOutputStream(new File(FILENAME));
-			OutputStreamWriter fileWriter = new OutputStreamWriter(fileStream,"UTF-8");
-			trans.transform(new DOMSource(doc), new StreamResult(fileWriter));
-			fileWriter.close();
+			writeDocToStream(doc, fileStream);
+			fileStream.close();
 		}
 		catch(Exception e)
 		{
@@ -355,6 +392,26 @@ public class Main extends JFrame
 		}
 	}
 	
+	protected void loadFromDocument(Document doc) throws Exception
+	{
+		Element root = doc.getDocumentElement();
+		if(root==null || !root.getNodeName().equals("tasklist"))
+		{
+			throw new Exception("Missing root element \"tasklist\"");
+		}
+		Iterator<Element> i = getElementChildren(root);
+		if(!i.hasNext())
+		{
+			throw new Exception("Missing element \"tasks\""); 
+		}
+		clearTree();
+		Element tasks = i.next();
+		if(!tasks.getNodeName().equals("tasks")){
+			throw new Exception("Missing element \"tasks\"");
+		}
+		addTasksFromChildElements(tasks, this.root, true);
+	}
+	
 	protected void load()
 	{
 		try
@@ -366,22 +423,7 @@ public class Main extends JFrame
 			}
 			DocumentBuilder builder = builderFact.newDocumentBuilder();
 			Document doc = builder.parse(file);
-			Element root = doc.getDocumentElement();
-			if(root==null || !root.getNodeName().equals("tasklist"))
-			{
-				throw new Exception("Missing root element \"tasklist\"");
-			}
-			Iterator<Element> i = getElementChildren(root);
-			if(!i.hasNext())
-			{
-				throw new Exception("Missing element \"tasks\""); 
-			}
-			clearTree();
-			Element tasks = i.next();
-			if(!tasks.getNodeName().equals("tasks")){
-				throw new Exception("Missing element \"tasks\"");
-			}
-			addTasksFromChildElements(tasks, this.root, true);
+			loadFromDocument(doc);
 		}
 		catch(Exception e)
 		{
@@ -472,8 +514,359 @@ public class Main extends JFrame
 		treeModel.reload();
 	}
 	
+	protected void loadConfig()
+	{
+		try
+		{
+			File file = new File(CONFIG_FILENAME);
+			if(!file.exists())
+			{
+				saveConfig();
+			}
+			DocumentBuilder builder = builderFact.newDocumentBuilder();
+			Document doc = builder.parse(file);
+			Element root = doc.getDocumentElement();
+			if(root==null || !root.getNodeName().equals("config"))
+			{
+				throw new Exception("Missing root element \"config\"");
+			}
+			Iterator<Element> i = getElementChildren(root);						
+			
+			loadUrl = null;
+			saveUrl = null;
+			mergeCommand = null;
+			lastSyncTime = 0L;
+						
+			while(i.hasNext())
+			{
+				Element el = i.next();
+				
+				if(el.getNodeName().equals("load-url")){
+					loadUrl = el.getTextContent();
+					if(loadUrl!=null && loadUrl.length()==0){
+						loadUrl = null;
+					}
+				}
+				else if(el.getNodeName().equals("save-url")){
+					saveUrl = el.getTextContent();
+					if(saveUrl!=null && saveUrl.length()==0){
+						saveUrl = null;
+					}
+				}
+				else if(el.getNodeName().equals("merge-command")){
+					mergeCommand = el.getTextContent();
+					if(mergeCommand!=null && mergeCommand.length()==0){
+						mergeCommand = null;
+					}
+				}
+				else if(el.getNodeName().equals("last-sync")){
+					try{
+						lastSyncTime = Long.parseLong(el.getTextContent());
+					}catch(NumberFormatException e){}
+				}				
+			}
+		}
+		catch(Exception e)
+		{
+			error("Failed to load config file: "+e.getClass().getName()+" - "+e.getMessage());
+		}
+	}
+	
+	protected void saveConfig()
+	{
+		try
+		{
+			DocumentBuilder builder = builderFact.newDocumentBuilder();
+			Document doc = builder.newDocument();
+			Element elConfig = doc.createElement("config");
+			doc.appendChild(elConfig);			
+			
+			if(loadUrl != null)
+			{
+				Element elLoadUrl = doc.createElement("load-url");
+				elLoadUrl.appendChild(doc.createTextNode(loadUrl));
+				elConfig.appendChild(elLoadUrl);
+			}
+			if(saveUrl != null)
+			{
+				Element elSaveUrl = doc.createElement("save-url");
+				elSaveUrl.appendChild(doc.createTextNode(saveUrl));
+				elConfig.appendChild(elSaveUrl);
+			}
+			if(mergeCommand != null)
+			{
+				Element elMergeCommand = doc.createElement("merge-command");
+				elMergeCommand.appendChild(doc.createTextNode(mergeCommand));
+				elConfig.appendChild(elMergeCommand);
+			}
+			if(lastSyncTime == null){
+				lastSyncTime = 0L;
+			}
+			Element elSync = doc.createElement("last-sync");
+			elSync.appendChild(doc.createTextNode(String.valueOf(lastSyncTime)));
+			elConfig.appendChild(elSync);
+			
+			FileOutputStream fileStream = new FileOutputStream(new File(CONFIG_FILENAME));
+			writeDocToStream(doc,fileStream);
+			fileStream.close();					
+		}
+		catch(Exception e)
+		{
+			error("Failed to save config file: "+e.getClass().getName()+" - "+e.getMessage());
+		}
+	}
+	
+	public static class SyncThread extends Thread
+	{
+		protected Main main;
+		
+		public SyncThread(Main main){
+			this.main = main;
+		}
+		
+		public void run()
+		{			
+			main.synchronise();
+		}
+	}
+	
+	protected void synchronise()
+	{
+		try
+		{
+			if(loadUrl==null){
+				throw new Exception("No load URL defined");
+			}
+			if(saveUrl==null){
+				throw new Exception("No save URL defined");
+			}
+			if(mergeCommand==null){
+				throw new Exception("No merge command defined");
+			}
+			
+			syncButton.setEnabled(false);
+			
+			Long newTimestamp = new Date().getTime(); 
+			
+			HttpClient client = new HttpClient();
+			DocumentBuilderFactory builderFact = DocumentBuilderFactory.newInstance();
+			DocumentBuilder builder = builderFact.newDocumentBuilder();			
+			
+			// make load request
+			PostMethod post = new PostMethod(loadUrl);			
+			client.executeMethod(post);
+			if(post.getStatusCode()!=200){
+				throw new Exception("Unexpected load response from server: "+post.getStatusCode()
+						+" "+post.getStatusText());
+			}
+			
+			// get timestamp header
+			Header tsHeader = post.getRequestHeader("timestamp");
+			Long timestamp;
+			if(tsHeader==null){
+				throw new Exception("Missing timestamp from server");
+			}			
+			try{
+				timestamp = Long.parseLong(tsHeader.getValue());
+			}catch(NumberFormatException e){
+				throw new Exception("Invalid timestamp from server \""+tsHeader.getValue()+"\"");
+			}			
+			if(timestamp < lastSyncTime){
+				throw new Exception("Remote timestamp earlier than local timestamp");
+			}
+			
+			// parse xml	
+			Document doc;
+			try{
+				doc = builder.parse(post.getResponseBodyAsStream());
+			}catch(Exception e){
+				throw new Exception("Failed to parse load response from server");
+			}
+			
+			// if remote version is more up to date
+			if(timestamp > lastSyncTime)
+			{
+				// if local changes made
+				if(unsynchedChanges)
+				{
+					// merge.
+					
+					// save local tree
+					save();
+					
+					// save remote tree to temp file
+					FileOutputStream fileStream = new FileOutputStream(MERGE_FILENAME);
+					writeDocToStream(doc,fileStream);
+					fileStream.close();
+					
+					// execute merge command to perform merge
+					String commandString = StringUtils.template(mergeCommand, 
+							"\""+FILENAME+"\"","\""+MERGE_FILENAME+"\"");
+					Process proc = Runtime.getRuntime().exec(commandString);
+					proc.waitFor();
+					proc.destroy();
+					
+					if(JOptionPane.showConfirmDialog(this, "Was the merge completed successfully?",
+							"Merge",JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)!=JOptionPane.YES_OPTION)
+					{
+						throw new Exception("Merge aborted");
+					}
+					
+					// load the newly merged local tree
+					load();
+				}
+				else
+				{
+					// just load xml from remote
+					loadFromDocument(doc);
+					
+					// save to file
+					save();
+				}
+			}
+			
+			// if local changes made
+			if(unsynchedChanges)
+			{
+				// write xml to byte array
+				doc = saveToDocument();
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				writeDocToStream(doc,baos);
+				baos.close();
+
+				// make save request				
+				post = new PostMethod(saveUrl);
+				post.setRequestHeader("timestamp",String.valueOf(newTimestamp));
+				ByteArrayRequestEntity bare = new ByteArrayRequestEntity(baos.toByteArray(),"application/xml");
+				post.setRequestEntity(bare);
+				client.executeMethod(post);
+				if(post.getStatusCode()!=200){
+					throw new Exception("Unexpected save response from server: "+post.getStatusCode()
+							+" "+post.getStatusText());
+				}				
+				
+				// server should echo back same xml to confirm
+				Document echoDoc;
+				try{
+					echoDoc = builder.parse(post.getResponseBodyAsStream());
+				}catch(Exception e){
+					throw new Exception("Failed to parse save response from server");
+				}
+				if(!nodesEqual(doc,echoDoc)){
+					throw new Exception("Bad save response from server");
+				}				
+			}
+			
+			unsynchedChanges = false;
+			lastSyncTime = newTimestamp;
+			
+			// save config
+			saveConfig();
+		}
+		catch(Exception e)
+		{
+			error("Failed to synchronise: "+e.getClass().getName()+" - "+e.getMessage());
+		}
+		finally
+		{
+			syncButton.setEnabled(true);
+		}		
+	}
+	
+	protected static boolean nodesEqual(Node a, Node b)
+	{
+		if((a==null)!=(b==null)){
+			return false;
+		}
+		if(a!=null)
+		{
+			if(a.getNodeType()!=b.getNodeType()){
+				return false;
+			}
+			if((a.getNodeName()==null)!=(b.getNodeName()==null)){
+				return false;
+			}
+			if(a.getNodeName()!=null && !a.getNodeName().equals(b.getNodeName())){
+				return false;
+			}
+			if((a.getNodeValue()==null)!=(b.getNodeValue()==null)){
+				return false;
+			}
+			if(a.getNodeValue()!=null && !a.getNodeValue().equals(b.getNodeValue())){
+				return false;
+			}
+			NamedNodeMap attrsA = a.getAttributes();
+			Map<String,String> attrMapA = new HashMap<String,String>();
+			if(attrsA!=null)
+			{
+				for(int i=0; i<attrsA.getLength(); i++)
+				{
+					Attr att = (Attr)attrsA.item(i);
+					attrMapA.put(att.getName(),att.getValue());
+				}
+			}
+			NamedNodeMap attrsB = b.getAttributes();
+			Map<String,String> attrMapB = new HashMap<String,String>();
+			if(attrsB!=null)
+			{
+				for(int i=0; i<attrsB.getLength(); i++)
+				{
+					Attr att = (Attr)attrsB.item(i);
+					attrMapB.put(att.getName(),att.getValue());
+				}
+			}
+			if(!attrMapA.equals(attrMapB)){
+				return false;
+			}
+			
+			Node childA = a.getFirstChild();
+			Node childB = b.getFirstChild();
+			while(childA!=null)
+			{
+				if(!nodesEqual(childA,childB)){
+					return false;
+				}
+				childA = childA.getNextSibling();
+				childB = childB.getNextSibling();
+			}
+			if(childB!=null){
+				return false;
+			}
+		}
+		return true;
+	}
+	
 	public static void main(String[] args)
 	{		
 		Main main = new Main();
+		/*try
+		{
+			String inputA = 
+				"<test><foo one=\"1\" two=\"2\"><bar/>foo<bar/><bar/></foo></test>";
+			String inputB = 
+				"<test><foo one=\"1\" two=\"2\"><bar/>foo<bar/><bar/></foo></test>";		
+			DocumentBuilder builder = builderFact.newDocumentBuilder();
+			Document docA = builder.parse(new ByteArrayInputStream(inputA.getBytes("UTF-8")));			
+			Document docB = builder.parse(new ByteArrayInputStream(inputB.getBytes("UTF-8")));
+			System.out.println(nodesEqual(docA,docB));
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}*/
+		/*try
+		{
+			System.out.println("Starting");
+			Process p = Runtime.getRuntime().exec(
+					"\"C:\\program files\\SourceGear\\Diffmerge\\Diffmerge.exe\" "
+					+"-t1=local -t2=remote file_a.txt file_b.txt");
+			p.waitFor();
+			p.destroy();
+			System.out.println("Finished");
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}*/
 	}
 }
