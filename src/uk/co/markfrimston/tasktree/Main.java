@@ -701,7 +701,7 @@ public class Main extends JFrame
 					
 					// execute merge command to perform merge
 					String commandString = StringUtils.template(mergeCommand, 
-							"\""+FILENAME+"\"","\""+MERGE_FILENAME+"\"");
+							FILENAME, MERGE_FILENAME );
 					Process proc = Runtime.getRuntime().exec(commandString);
 					proc.waitFor();
 					proc.destroy();
@@ -773,7 +773,7 @@ public class Main extends JFrame
 		}		
 	}
 	
-	protected static boolean nodesEqual(Node a, Node b)
+	protected boolean nodesEqual(Node a, Node b)
 	{
 		if((a==null)!=(b==null)){
 			return false;
