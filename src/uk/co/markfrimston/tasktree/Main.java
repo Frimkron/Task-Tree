@@ -661,7 +661,7 @@ public class Main extends JFrame
 			}
 			
 			// get timestamp header
-			Header tsHeader = post.getRequestHeader("timestamp");
+			Header tsHeader = post.getResponseHeader("Timestamp");
 			Long timestamp;
 			if(tsHeader==null){
 				throw new Exception("Missing timestamp from server");
@@ -676,7 +676,7 @@ public class Main extends JFrame
 			}
 			
 			// parse xml	
-			Document doc;
+			Document doc;			
 			try{
 				doc = builder.parse(post.getResponseBodyAsStream());
 			}catch(Exception e){
@@ -736,7 +736,7 @@ public class Main extends JFrame
 
 				// make save request				
 				post = new PostMethod(saveUrl);
-				post.setRequestHeader("timestamp",String.valueOf(newTimestamp));
+				post.setRequestHeader("Timestamp",String.valueOf(newTimestamp));
 				ByteArrayRequestEntity bare = new ByteArrayRequestEntity(baos.toByteArray(),"application/xml");
 				post.setRequestEntity(bare);
 				client.executeMethod(post);
