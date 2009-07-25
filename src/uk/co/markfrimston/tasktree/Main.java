@@ -59,11 +59,11 @@ public class Main extends JFrame
 	protected JTextArea quickIn;
 	protected JPopupMenu popup;
 	protected JButton syncButton;
-	
-	protected boolean unsynchedChanges = true;
+		
 	protected String saveUrl;
 	protected String loadUrl;
 	protected Long lastSyncTime = 0L;
+	protected Boolean unsynchedChanges = true;
 	protected String mergeCommand;
 	
 	public Main()
@@ -84,7 +84,7 @@ public class Main extends JFrame
 					if(newText!=null && newText.length()>0)
 					{
 						addTask(root, 0, newText, true);
-						save();
+						changesMade();
 					}
 					quickIn.setText("");
 				}
@@ -160,7 +160,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = parent.getIndex(selected);				
 				promptAndInsert(parent, pos);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(addBefore);
@@ -172,7 +172,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = parent.getIndex(selected)+1;
 				promptAndInsert(parent, pos);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(addAfter);
@@ -183,7 +183,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode selected = getSelectedNode();
 				int pos = selected.getChildCount();
 				promptAndInsert(selected, pos);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(addNested);
@@ -195,7 +195,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode selected = getSelectedNode();
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				moveTask(selected, parent, 0);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(moveTop);
@@ -207,7 +207,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = Math.max(parent.getIndex(selected)-1,0);
 				moveTask(selected, parent, pos);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(moveUp);
@@ -219,7 +219,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();
 				int pos = Math.min(parent.getIndex(selected)+1, parent.getChildCount()-1);
 				moveTask(selected, parent, pos);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(moveDown);
@@ -230,7 +230,7 @@ public class Main extends JFrame
 				DefaultMutableTreeNode selected = getSelectedNode();
 				DefaultMutableTreeNode parent = (DefaultMutableTreeNode)selected.getParent();				
 				moveTask(selected, parent, parent.getChildCount()-1);
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(moveBottom);
@@ -245,7 +245,7 @@ public class Main extends JFrame
 				{			
 					selected.setUserObject(newText);
 					treeModel.reload(selected);
-					save();
+					changesMade();
 				}
 			}
 		});
@@ -255,7 +255,7 @@ public class Main extends JFrame
 			public void actionPerformed(ActionEvent e)
 			{
 				promptAndRemove(getSelectedNode());
-				save();
+				changesMade();
 			}
 		});
 		this.popup.add(delete);
@@ -267,6 +267,13 @@ public class Main extends JFrame
 		
 		syncButton.setVisible(loadUrl!=null && saveUrl!=null 
 				&& mergeCommand!=null);
+	}
+	
+	protected void changesMade()
+	{
+		unsynchedChanges = true;
+		save();
+		saveConfig();
 	}
 	
 	protected String htmlFilter(String input)
@@ -345,11 +352,9 @@ public class Main extends JFrame
 	
 	protected void writeDocToStream(Document doc, OutputStream stream) throws Exception
 	{
-		transFact.setAttribute("indent-number", 4);
 		Transformer trans = transFact.newTransformer();
-		trans.setOutputProperty(OutputKeys.INDENT, "yes");		
 		OutputStreamWriter writer = new OutputStreamWriter(stream,"UTF-8");
-		trans.transform(new DOMSource(doc), new StreamResult(writer));
+		trans.transform(new DOMSource(doc), new StreamResult(new XmlPrologBreakFilterWriter(writer)));
 	}
 	
 	protected Document saveToDocument() throws Exception
@@ -357,10 +362,13 @@ public class Main extends JFrame
 		DocumentBuilder builder = builderFact.newDocumentBuilder();
 		Document doc = builder.newDocument();
 		Element taskList = doc.createElement("tasklist");
-		doc.appendChild(taskList);			
+		doc.appendChild(taskList);		
+		taskList.appendChild(doc.createTextNode("\n\t"));
 		Element tasks = doc.createElement("tasks");
 		taskList.appendChild(tasks);
-		addChildElementsFromTasks(doc,tasks,root);
+		taskList.appendChild(doc.createTextNode("\n"));
+		addChildElementsFromTasks(doc,tasks,root,1);
+		
 		return doc;
 	}
 	
@@ -380,15 +388,27 @@ public class Main extends JFrame
 	}
 	
 	protected void addChildElementsFromTasks(Document doc, Element parent, 
-			DefaultMutableTreeNode treeNode)
+			DefaultMutableTreeNode treeNode, int indent)
 	{
 		for(int i=0; i<treeNode.getChildCount(); i++)
 		{
 			DefaultMutableTreeNode treeChild = (DefaultMutableTreeNode)treeNode.getChildAt(i);
+			String indentText = "\n";
+			for(int j=0; j<indent+1; j++){
+				indentText += "\t";
+			}
+			parent.appendChild(doc.createTextNode(indentText));
 			Element childEl = doc.createElement("task");
 			childEl.setAttribute("label", (String)treeChild.getUserObject());
 			parent.appendChild(childEl);
-			addChildElementsFromTasks(doc, childEl, treeChild);
+			addChildElementsFromTasks(doc, childEl, treeChild, indent+1);
+		}		
+		if(treeNode.getChildCount()>0){
+			String indentText = "\n";
+			for(int i=0; i<indent; i++){
+				indentText += "\t";
+			}
+			parent.appendChild(doc.createTextNode(indentText));
 		}
 	}
 	
@@ -536,6 +556,7 @@ public class Main extends JFrame
 			saveUrl = null;
 			mergeCommand = null;
 			lastSyncTime = 0L;
+			unsynchedChanges = true;
 						
 			while(i.hasNext())
 			{
@@ -563,7 +584,10 @@ public class Main extends JFrame
 					try{
 						lastSyncTime = Long.parseLong(el.getTextContent());
 					}catch(NumberFormatException e){}
-				}				
+				}		
+				else if(el.getNodeName().equals("unsynched-changes")){					
+					unsynchedChanges = Boolean.parseBoolean(el.getTextContent());					
+				}
 			}
 		}
 		catch(Exception e)
@@ -572,39 +596,48 @@ public class Main extends JFrame
 		}
 	}
 	
+	protected void makeConfigEl(Document doc, Node parent, String name, String description, Object value)
+	{
+		parent.appendChild(doc.createTextNode("\n\t"));
+		parent.appendChild(doc.createComment(description));
+		parent.appendChild(doc.createTextNode("\n\t"));
+		Element elParam = doc.createElement(name);
+		if(value!=null){
+			elParam.appendChild(doc.createTextNode(String.valueOf(value)));
+		}
+		parent.appendChild(elParam);
+		parent.appendChild(doc.createTextNode("\n"));
+	}
+	
 	protected void saveConfig()
 	{
 		try
 		{
 			DocumentBuilder builder = builderFact.newDocumentBuilder();
 			Document doc = builder.newDocument();
+			//doc.appendChild(doc.createTextNode("\n"));
 			Element elConfig = doc.createElement("config");
-			doc.appendChild(elConfig);			
+			doc.appendChild(elConfig);	
+			elConfig.appendChild(doc.createTextNode("\n"));
 			
-			if(loadUrl != null)
-			{
-				Element elLoadUrl = doc.createElement("load-url");
-				elLoadUrl.appendChild(doc.createTextNode(loadUrl));
-				elConfig.appendChild(elLoadUrl);
-			}
-			if(saveUrl != null)
-			{
-				Element elSaveUrl = doc.createElement("save-url");
-				elSaveUrl.appendChild(doc.createTextNode(saveUrl));
-				elConfig.appendChild(elSaveUrl);
-			}
-			if(mergeCommand != null)
-			{
-				Element elMergeCommand = doc.createElement("merge-command");
-				elMergeCommand.appendChild(doc.createTextNode(mergeCommand));
-				elConfig.appendChild(elMergeCommand);
-			}
+			makeConfigEl(doc,elConfig,"load-url","URL used to load task tree from remote server",loadUrl);
+			
+			makeConfigEl(doc,elConfig,"save-url","URL used to save task tree to remote server",saveUrl);
+			
+			makeConfigEl(doc,elConfig,"merge-command","Command executed to merge task tree versions. "
+						+"Use {0} for local file, {1} for remote",mergeCommand);								
+			
 			if(lastSyncTime == null){
 				lastSyncTime = 0L;
 			}
-			Element elSync = doc.createElement("last-sync");
-			elSync.appendChild(doc.createTextNode(String.valueOf(lastSyncTime)));
-			elConfig.appendChild(elSync);
+			makeConfigEl(doc,elConfig,"last-sync","Timestamp of last sync. Do not edit!",lastSyncTime);			
+			
+			if(unsynchedChanges == null){
+				unsynchedChanges = true;
+			}
+			makeConfigEl(doc,elConfig,"unsynched-changes","Changes made since last sync. Do not edit!",unsynchedChanges);
+			
+			elConfig.appendChild(doc.createTextNode("\n"));
 			
 			FileOutputStream fileStream = new FileOutputStream(new File(CONFIG_FILENAME));
 			writeDocToStream(doc,fileStream);
@@ -671,7 +704,7 @@ public class Main extends JFrame
 			}catch(NumberFormatException e){
 				throw new Exception("Invalid timestamp from server \""+tsHeader.getValue()+"\"");
 			}			
-			if(timestamp < lastSyncTime){
+			if(timestamp!=0 && timestamp < lastSyncTime){
 				throw new Exception("Remote timestamp earlier than local timestamp");
 			}
 			
@@ -686,11 +719,9 @@ public class Main extends JFrame
 			// if remote version is more up to date
 			if(timestamp > lastSyncTime)
 			{
-				// if local changes made
+				// if local changes made, merge
 				if(unsynchedChanges)
-				{
-					// merge.
-					
+				{					
 					// save local tree
 					save();
 					
@@ -712,6 +743,9 @@ public class Main extends JFrame
 						throw new Exception("Merge aborted");
 					}
 					
+					// remove temp file
+					new File(MERGE_FILENAME).delete();
+					
 					// load the newly merged local tree
 					load();
 				}
@@ -725,37 +759,35 @@ public class Main extends JFrame
 				}
 			}
 			
-			// if local changes made
-			if(unsynchedChanges)
-			{
-				// write xml to byte array
-				doc = saveToDocument();
-				ByteArrayOutputStream baos = new ByteArrayOutputStream();
-				writeDocToStream(doc,baos);
-				baos.close();
+			// save back to remote every time, to update remote with new sync timestamp.
+					
+			// write xml to byte array
+			doc = saveToDocument();
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			writeDocToStream(doc,baos);
+			baos.close();
 
-				// make save request				
-				post = new PostMethod(saveUrl);
-				post.setRequestHeader("Timestamp",String.valueOf(newTimestamp));
-				ByteArrayRequestEntity bare = new ByteArrayRequestEntity(baos.toByteArray(),"application/xml");
-				post.setRequestEntity(bare);
-				client.executeMethod(post);
-				if(post.getStatusCode()!=200){
-					throw new Exception("Unexpected save response from server: "+post.getStatusCode()
-							+" "+post.getStatusText());
-				}				
-				
-				// server should echo back same xml to confirm
-				Document echoDoc;
-				try{
-					echoDoc = builder.parse(post.getResponseBodyAsStream());
-				}catch(Exception e){
-					throw new Exception("Failed to parse save response from server");
-				}
-				if(!nodesEqual(doc,echoDoc)){
-					throw new Exception("Bad save response from server");
-				}				
+			// make save request				
+			post = new PostMethod(saveUrl);
+			post.setRequestHeader("Timestamp",String.valueOf(newTimestamp));
+			ByteArrayRequestEntity bare = new ByteArrayRequestEntity(baos.toByteArray(),"application/xml");
+			post.setRequestEntity(bare);
+			client.executeMethod(post);
+			if(post.getStatusCode()!=200){
+				throw new Exception("Unexpected save response from server: "+post.getStatusCode()
+						+" "+post.getStatusText());
+			}				
+			
+			// server should echo back same xml to confirm
+			Document echoDoc;
+			try{
+				echoDoc = builder.parse(post.getResponseBodyAsStream());
+			}catch(Exception e){
+				throw new Exception("Failed to parse save response from server");
 			}
+			if(!nodesEqual(doc,echoDoc)){
+				throw new Exception("Bad save response from server");
+			}						
 			
 			unsynchedChanges = false;
 			lastSyncTime = newTimestamp;
