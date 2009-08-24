@@ -135,7 +135,7 @@ public class Main extends JFrame
 		this.tree.setRootVisible(false);	
 		this.tree.setShowsRootHandles(true);
 		this.tree.addMouseListener(new MouseAdapter(){
-			public void mouseReleased(MouseEvent arg0) 
+			protected void doSelectRow(MouseEvent arg0)
 			{
 				int row = tree.getRowForLocation(arg0.getX(), arg0.getY());
 				if(row != -1)
@@ -145,6 +145,14 @@ public class Main extends JFrame
 						popup.show(tree, arg0.getX(), arg0.getY());
 					}	
 				}
+			}
+			public void mousePressed(MouseEvent arg0)
+			{
+				doSelectRow(arg0);
+			}
+			public void mouseReleased(MouseEvent arg0) 
+			{
+				doSelectRow(arg0);
 			}			
 		});
 		JScrollPane treeScroll = new JScrollPane(tree);
